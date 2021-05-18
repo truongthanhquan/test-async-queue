@@ -64,7 +64,7 @@ app.get('/', (req, res) => {
             await new Promise((resolve, reject) => {
                 myEmitter.on(correlationId, (v) => {
                     resolve()
-                    console.log(' [.] Got %s', v);
+                    console.info(' [.] Got %s', v);
                     res.send(v);
                     // setTimeout(function () {
                     //     connection.close();
