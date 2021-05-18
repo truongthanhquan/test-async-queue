@@ -29,7 +29,9 @@ var gQ;
                     channel.consume(q.queue, function (msg) {
                         console.info("Message: ", msg.content.toString());
                         if (msg.properties.correlationId) {
-                            myEmitter.emit(msg.properties.correlationId, msg.content.toString());
+                            if (myEmitter.emit(msg.properties.correlationId, msg.content.toString())) {
+                                console.error("Missing listen of correlationId: ", msg.properties.correlationId, msg.content.toString());
+                            }
                         }
                     }, {
                         noAck: true
@@ -42,6 +44,13 @@ var gQ;
     });
 
 })();
+
+
+function generateUuid() {
+    return Math.random().toString() +
+        Math.random().toString() +
+        Math.random().toString();
+}
 
 const express = require('express')
 const app = express()
@@ -65,11 +74,8 @@ app.get('/', (req, res) => {
                 myEmitter.on(correlationId, (v) => {
                     resolve()
                     console.info(' [.] Got %s', v);
+                    // Response for client
                     res.send(v);
-                    // setTimeout(function () {
-                    //     connection.close();
-                    //     process.exit(0)
-                    // }, 500);
                 });
 
                 channel.sendToQueue('rpc_queue',
@@ -81,12 +87,6 @@ app.get('/', (req, res) => {
             console.log("End");
         });
     });
-
-    function generateUuid() {
-        return Math.random().toString() +
-            Math.random().toString() +
-            Math.random().toString();
-    }
 })
 
 app.listen(port, () => {
