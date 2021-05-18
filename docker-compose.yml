@@ -1,0 +1,7 @@
+version: "3.5"
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - 8082:15672
+      - 5672:5672
