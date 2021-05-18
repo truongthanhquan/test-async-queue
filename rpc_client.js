@@ -1,22 +1,14 @@
 #!/usr/bin/env node
 
 var amqp = require('amqplib/callback_api');
-const { reject } = require('bluebird');
 const EventEmitter = require('events');
 
 class MyEmitter extends EventEmitter { }
 
 const myEmitter = new MyEmitter();
 
-var args = process.argv.slice(2);
-
-if (args.length == 0) {
-    console.log("Usage: rpc_client.js num");
-    process.exit(1);
-}
-
+var gQ;
 (async function () {
-    var gQ;
     await new Promise((resolve, reject) => {
         amqp.connect('amqp://localhost', async function (error0, connection) {
             if (error0) {
@@ -32,9 +24,7 @@ if (args.length == 0) {
                     if (error2) {
                         throw error2;
                     }
-                    var num = parseInt(args[0]);
-
-                    console.log(' [x] Consume fib(%d)', num);
+                    console.log('Consume fib');
 
                     channel.consume(q.queue, function (msg) {
                         console.info("Message: ", msg.content.toString());
@@ -51,6 +41,13 @@ if (args.length == 0) {
         });
     });
 
+})();
+
+const express = require('express')
+const app = express()
+const port = 3000
+
+app.get('/', (req, res) => {
     amqp.connect('amqp://localhost', async function (error0, connection) {
         if (error0) {
             throw error0;
@@ -61,17 +58,18 @@ if (args.length == 0) {
                 throw error1;
             }
             var correlationId = generateUuid();
-            var num = parseInt(args[0]);
+            var num = parseInt(req.query.num);
 
             console.log(' [x] Requesting fib(%d)', num);
             await new Promise((resolve, reject) => {
-                myEmitter.once(correlationId, (v) => {
+                myEmitter.on(correlationId, (v) => {
                     resolve()
                     console.log(' [.] Got %s', v);
-                    setTimeout(function () {
-                        connection.close();
-                        process.exit(0)
-                    }, 500);
+                    res.send(v);
+                    // setTimeout(function () {
+                    //     connection.close();
+                    //     process.exit(0)
+                    // }, 500);
                 });
 
                 channel.sendToQueue('rpc_queue',
@@ -80,7 +78,7 @@ if (args.length == 0) {
                     replyTo: gQ.queue
                 });
             })
-            console.log("test");
+            console.log("End");
         });
     });
 
@@ -89,4 +87,9 @@ if (args.length == 0) {
             Math.random().toString() +
             Math.random().toString();
     }
-})();
+})
+
+app.listen(port, () => {
+    console.log(`Example app listening at http://localhost:${port}`)
+    console.log(`Use this url for test http://localhost:${port}?num=1`)
+})
