@@ -1,49 +1,74 @@
-#!/usr/bin/env node
+// #!/usr/bin/env node
 
-var amqp = require('amqplib/callback_api');
+const amqp = require('amqplib/callback_api');
+const { resolve, reject } = require('bluebird');
 const EventEmitter = require('events');
-
 class MyEmitter extends EventEmitter { }
 
-const myEmitter = new MyEmitter();
+class RequestQueue {
+    constructor() { }
 
-var gQ;
-(async function () {
-    await new Promise((resolve, reject) => {
-        amqp.connect('amqp://localhost', async function (error0, connection) {
+    init(cb) {
+        this.emitter = new MyEmitter();
+        const self = this;
+        amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost', function (error0, connection) {
             if (error0) {
                 throw error0;
             }
-            connection.createChannel(async function (error1, channel) {
+            self.connection = connection;
+
+            connection.createChannel(function (error1, channel) {
                 if (error1) {
                     return reject(error1);
                 }
+
+                self.channel = channel;
+
                 channel.assertQueue('', {
                     exclusive: true
-                }, async function (error2, q) {
+                }, function (error2, q) {
                     if (error2) {
                         throw error2;
                     }
-                    console.log('Consume fib');
+                    self.q = q;
 
+                    console.log('Response consume');
                     channel.consume(q.queue, function (msg) {
                         console.info("Message: ", msg.content.toString());
                         if (msg.properties.correlationId) {
-                            if (myEmitter.emit(msg.properties.correlationId, msg.content.toString())) {
-                                console.error("Missing listen of correlationId: ", msg.properties.correlationId, msg.content.toString());
+                            let mes = msg.content.toString();
+                            if (!self.emitter.emit(msg.properties.correlationId, mes)) {
+                                console.error("Missing listen of correlationId: ", msg.properties.correlationId, mes);
                             }
                         }
                     }, {
                         noAck: true
                     });
-                    gQ = q
-                    resolve();
+
+                    // Callback
+                    cb();
                 });
             });
         });
-    });
+    }
 
-})();
+    sendRequest(message) {
+        const correlationId = generateUuid();
+        const self = this;
+        const result = new Promise((resolve, reject) => {
+            self.emitter.once(correlationId, (v) => {
+                console.info(' [.] Got %s', v);
+                resolve(v);
+            });
+        });
+
+        self.channel.sendToQueue('rpc_queue', Buffer.from(message.toString()), {
+            correlationId: correlationId,
+            replyTo: self.q.queue
+        });
+        return result;
+    }
+}
 
 
 function generateUuid() {
@@ -52,44 +77,21 @@ function generateUuid() {
         Math.random().toString();
 }
 
-const express = require('express')
-const app = express()
-const port = 3000
+
+const express = require('express');
+const app = express();
+const port = 3000;
+const rq = new RequestQueue();
 
 app.get('/', (req, res) => {
-    amqp.connect('amqp://localhost', async function (error0, connection) {
-        if (error0) {
-            throw error0;
-        }
+    const num = parseInt(req.query.num);
+    console.info("Request num: ", num);
+    rq.sendRequest(num).then((v) => res.send(v));
+});
 
-        connection.createChannel(async function (error1, channel) {
-            if (error1) {
-                throw error1;
-            }
-            var correlationId = generateUuid();
-            var num = parseInt(req.query.num);
-
-            console.log(' [x] Requesting fib(%d)', num);
-            await new Promise((resolve, reject) => {
-                myEmitter.on(correlationId, (v) => {
-                    resolve()
-                    console.info(' [.] Got %s', v);
-                    // Response for client
-                    res.send(v);
-                });
-
-                channel.sendToQueue('rpc_queue',
-                    Buffer.from(num.toString()), {
-                    correlationId: correlationId,
-                    replyTo: gQ.queue
-                });
-            })
-            console.log("End");
-        });
+rq.init(() => {
+    app.listen(port, () => {
+        console.log(`Example app listening at http://localhost:${port}`);
+        console.log(`Use this url for test http://localhost:${port}?num=1`);
     });
-})
-
-app.listen(port, () => {
-    console.log(`Example app listening at http://localhost:${port}`)
-    console.log(`Use this url for test http://localhost:${port}?num=1`)
-})
+});

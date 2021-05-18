@@ -4,4 +4,23 @@ services:
     image: rabbitmq:3-management
     ports:
       - 8082:15672
-      - 5672:5672
+      
+  server:
+    build: .
+    env_file:
+      - ${PWD}/.env
+    command: node rpc_server.js
+    depends_on:
+      - rabbitmq
+    restart: on-failure
+
+  client:
+    build: .
+    env_file:
+      - ${PWD}/.env
+    command: node rpc_client.js
+    ports:
+      - 3000:3000
+    depends_on:
+      - rabbitmq
+    restart: on-failure
