@@ -4,7 +4,8 @@ services:
     image: rabbitmq:3-management
     ports:
       - 8082:15672
-      
+      - 5672:5672
+
   server:
     build: .
     env_file:

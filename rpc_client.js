@@ -90,7 +90,8 @@ app.get('/', (req, res) => {
 });
 
 rq.init(() => {
-    app.listen(port, () => {
+    const args = process.argv.slice(2);
+    app.listen(args[0] || port, () => {
         console.log(`Example app listening at http://localhost:${port}`);
         console.log(`Use this url for test http://localhost:${port}?num=1`);
     });
