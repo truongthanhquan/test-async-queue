@@ -6,7 +6,9 @@ const EventEmitter = require('events');
 class MyEmitter extends EventEmitter { }
 
 class RequestQueue {
-    constructor() { }
+    constructor() {
+        this.timeout = 3000; // Default timeout: 3s
+    }
 
     init(cb) {
         this.emitter = new MyEmitter();
@@ -37,7 +39,7 @@ class RequestQueue {
                         console.info("Message: ", msg.content.toString());
                         if (msg.properties.correlationId) {
                             let mes = msg.content.toString();
-                            if (!self.emitter.emit(msg.properties.correlationId, mes)) {
+                            if (!self.emitter.emit(msg.properties.correlationId, null, mes)) {
                                 console.error("Missing listen of correlationId: ", msg.properties.correlationId, mes);
                             }
                         }
@@ -56,7 +58,11 @@ class RequestQueue {
         const correlationId = generateUuid();
         const self = this;
         const result = new Promise((resolve, reject) => {
-            self.emitter.once(correlationId, (v) => {
+            self.emitter.once(correlationId, (err, v) => {
+                if (err) {
+                    return reject(err);
+                }
+
                 console.info(' [.] Got %s', v);
                 resolve(v);
             });
@@ -66,7 +72,16 @@ class RequestQueue {
             correlationId: correlationId,
             replyTo: self.q.queue
         });
+
+        this.rejectTimeout(correlationId);
         return result;
+    }
+
+    rejectTimeout(correlationId) {
+        const self = this;
+        setTimeout(() => {
+            self.emitter.emit(correlationId, new Error('Timeout'));
+        }, self.timeout);
     }
 }
 
@@ -86,7 +101,9 @@ const rq = new RequestQueue();
 app.get('/', (req, res) => {
     const num = parseInt(req.query.num);
     console.info("Request num: ", num);
-    rq.sendRequest(num).then((v) => res.send(v));
+    rq.sendRequest(num)
+        .then(v => res.send(v))
+        .catch(err => res.send(err.message));
 });
 
 rq.init(() => {
